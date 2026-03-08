@@ -1,0 +1,86 @@
+const DEFAULT_SITE_CONTENT = {
+  gallery: {
+    images: ["logo", "me", "bikash", "volli", "monish"],
+  },
+  timeline: [
+    { year: "2010", title: "The Genesis", desc: "Prasthanam begins as a Telugu drama collective." },
+    { year: "2013", title: "Official Recognition", desc: "Recognized by TSG as the Telugu Dramatics Society." },
+    { year: "2016", title: "Aahana Pellanta", desc: "A landmark comedy production on campus." },
+    { year: "2019", title: "Kill Rose", desc: "A genre shift showcasing thriller storytelling." },
+    { year: "2025", title: "The Future", desc: "Building the next chapter for Prasthanam." },
+  ],
+  navarasas: [
+    { id: "shringara", name: "Shringara", subtitle: "Love / Beauty", plays: ["Iddaru", "Nenu Naa Rakshasi", "Sakuntalam"] },
+    { id: "hasya", name: "Hasya", subtitle: "Laughter", plays: ["Aahana Pellanta", "Jathi Ratnalu"] },
+    { id: "karuna", name: "Karuna", subtitle: "Sorrow", plays: ["Mithunam", "Swathi Muthyam"] },
+    { id: "raudra", name: "Raudra", subtitle: "Anger", plays: ["Karna Bharam", "Raktha Charitra"] },
+    { id: "veera", name: "Veera", subtitle: "Heroism", plays: ["Bahubali", "Magadheera"] },
+    { id: "bhayanaka", name: "Bhayanaka", subtitle: "Terror / Fear", plays: ["Cheekati Rajyam", "Bhoot"] },
+    { id: "bibhatsa", name: "Bibhatsa", subtitle: "Disgust", plays: ["Arundhati", "Tumbbad (Adaptation)"] },
+    { id: "adbhuta", name: "Adbhuta", subtitle: "Wonder", plays: ["Mayabazar", "Aditya 369"] },
+    { id: "shanta", name: "Shanta", subtitle: "Peace", plays: ["Annamayya", "Ramadasu"] },
+  ],
+  castBatches: [
+    {
+      id: "2025",
+      label: "Batch of 2025",
+      yearRange: "2021 - 2025",
+      members: ["Poreddy Ashish Reddy", "Vikas Arjun Pragada", "Nistalavalli Sathvika", "Manish Rasamalla"],
+      photos: ["me", "bikash", "volli", "monish", "logo"],
+    },
+  ],
+  governors: [
+    {
+      name: "Poreddy Ashish Reddy",
+      role: "The Showrunner",
+      quote: "Yattitude izz altitude",
+      funFact: "Can sleep with eyes open during lectures.",
+      department: "",
+      contactInfo: "",
+      zodiacSign: "",
+      img: "Me .jpeg",
+    },
+    {
+      name: "Vikas Arjun Pragada",
+      role: "The Director",
+      quote: "Cheppu bhai em cheddam bhaiiiii......",
+      funFact: "Practices dialogues in the shower loudly.",
+      department: "",
+      contactInfo: "",
+      zodiacSign: "",
+      img: "Bikash.jpeg",
+    },
+    {
+      name: "Nistalavalli Sathvika",
+      role: "The Playwright",
+      quote: "Arey thappuraa...",
+      funFact: "Eats more but not in mess",
+      department: "",
+      contactInfo: "",
+      zodiacSign: "",
+      img: "Volli.jpeg",
+    },
+    {
+      name: "Manish Rasamalla",
+      role: "The Stage Master",
+      quote: "Ni bondha ra Ni bondha....",
+      funFact: "Goes library only fr Renu shree",
+      department: "",
+      contactInfo: "",
+      zodiacSign: "",
+      img: "Monish .jpeg",
+    },
+  ],
+  latestEvent: {
+    title: "Encore 2026",
+    poster: "logo",
+    date: "March 20, 2026",
+    time: "7:00 PM",
+    venue: "Kalidas Auditorium, IIT Kharagpur",
+    description: "Book your seats early and witness Prasthanam's latest stage production live.",
+  },
+};
+
+module.exports = {
+  DEFAULT_SITE_CONTENT,
+};
