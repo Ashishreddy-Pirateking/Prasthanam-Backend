@@ -3,12 +3,17 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 const Admin = require("./models/Admin");
 const SiteContent = require("./models/SiteContent");
 const { DEFAULT_SITE_CONTENT } = require("./defaultContent");
+const {
+  appendTicketBookingToSheet,
+  isGoogleSheetsConfigured,
+} = require("./googleSheets");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const app = express();
@@ -100,6 +105,17 @@ const sanitizeLatestEvent = (value = {}) => ({
   venue: String(value?.venue || "").trim(),
   description: String(value?.description || "").trim(),
 });
+
+const normalizeText = (value, maxLength = 500) => String(value || "").trim().slice(0, maxLength);
+
+const sanitizeTicketBookingPayload = (value = {}) => ({
+  name: normalizeText(value?.name, 160),
+  email: normalizeText(value?.email, 160).toLowerCase(),
+  message: normalizeText(value?.message, 1000),
+  pageUrl: normalizeText(value?.pageUrl, 300),
+});
+
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 
 const sanitizeSiteContentPayload = (payload = {}) => {
   const safe = {
@@ -251,6 +267,55 @@ app.post("/api/admin/login", async (req, res) => {
   } catch (error) {
     console.error("Login failed:", error);
     return res.status(500).json({ message: "Login failed.", error: error.message });
+  }
+});
+
+app.post("/api/tickets/book", async (req, res) => {
+  try {
+    const booking = sanitizeTicketBookingPayload(req.body || {});
+
+    if (!booking.name || !booking.email) {
+      return res.status(400).json({ message: "Name and email are required." });
+    }
+
+    if (!isValidEmail(booking.email)) {
+      return res.status(400).json({ message: "Enter a valid email address." });
+    }
+
+    if (!isGoogleSheetsConfigured()) {
+      return res.status(503).json({
+        message: "Ticket booking is temporarily unavailable. Google Sheets setup is still pending on the backend.",
+      });
+    }
+
+    const result = await appendTicketBookingToSheet({
+      ...booking,
+      submittedAt: new Date().toISOString(),
+      source: booking.pageUrl || String(req.get("referer") || ""),
+      referrer: String(req.get("referer") || ""),
+      userAgent: normalizeText(req.get("user-agent"), 400),
+      ipAddress: normalizeText(req.ip || req.socket?.remoteAddress, 120),
+    });
+
+    return res.status(201).json({
+      message: "Your booking request has been received.",
+      booking: {
+        name: booking.name,
+        email: booking.email,
+      },
+      sheet: {
+        id: result.spreadsheetId,
+        tab: result.sheetTitle,
+        range: result.updatedRange,
+      },
+    });
+  } catch (error) {
+    const requestId = crypto.randomUUID();
+    console.error(`Ticket booking failed [${requestId}]:`, error.message);
+    return res.status(500).json({
+      message: "Could not submit your booking right now. Please try again shortly.",
+      requestId,
+    });
   }
 });
 
