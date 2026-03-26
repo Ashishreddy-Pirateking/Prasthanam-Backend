@@ -3,3 +3,4 @@ node_modules/
 dbpassword.txt
 *.log
 uploads/
+siteContent.fallback.json

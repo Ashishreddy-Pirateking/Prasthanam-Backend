@@ -2,6 +2,12 @@
 
 This contains the required backend.
 
+## Content persistence
+
+Set `MONGO_URI` in `backend/.env` if you want admin content edits to persist in MongoDB.
+
+If `MONGO_URI` is missing or MongoDB is temporarily unavailable, the backend now falls back to a local `siteContent.fallback.json` file so content edits can still survive local restarts. This fallback is useful for development, but a real database is still recommended for deployed environments.
+
 ## Ticket bookings -> Google Sheets
 
 The public ticket form now posts to `POST /api/tickets/book`, and the backend appends each booking as a new row in Google Sheets.

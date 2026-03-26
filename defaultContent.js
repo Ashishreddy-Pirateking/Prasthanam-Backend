@@ -32,6 +32,7 @@ const DEFAULT_SITE_CONTENT = {
   governors: [
     {
       name: "Poreddy Ashish Reddy",
+      year: "2025-2026",
       role: "The Showrunner",
       quote: "Yattitude izz altitude",
       funFact: "Can sleep with eyes open during lectures.",
@@ -42,6 +43,7 @@ const DEFAULT_SITE_CONTENT = {
     },
     {
       name: "Vikas Arjun Pragada",
+      year: "2025-2026",
       role: "The Director",
       quote: "Cheppu bhai em cheddam bhaiiiii......",
       funFact: "Practices dialogues in the shower loudly.",
@@ -52,6 +54,7 @@ const DEFAULT_SITE_CONTENT = {
     },
     {
       name: "Nistalavalli Sathvika",
+      year: "2025-2026",
       role: "The Playwright",
       quote: "Arey thappuraa...",
       funFact: "Eats more but not in mess",
@@ -62,6 +65,7 @@ const DEFAULT_SITE_CONTENT = {
     },
     {
       name: "Manish Rasamalla",
+      year: "2025-2026",
       role: "The Stage Master",
       quote: "Ni bondha ra Ni bondha....",
       funFact: "Goes library only fr Renu shree",

@@ -33,6 +33,7 @@ const castBatchSchema = new mongoose.Schema(
 const governorSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    year: { type: String, trim: true },
     role: { type: String, trim: true },
     quote: { type: String, trim: true },
     funFact: { type: String, trim: true },

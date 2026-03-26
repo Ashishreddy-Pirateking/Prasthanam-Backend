@@ -20,6 +20,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-env";
 const uploadsDir = path.join(__dirname, "uploads");
+const fallbackContentFile = path.join(__dirname, "siteContent.fallback.json");
 const ENV_ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || "").trim().toLowerCase();
 const ENV_ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "");
 const ENV_ADMIN_DISPLAY_NAME = String(process.env.ADMIN_DISPLAY_NAME || "Backstage Admin");
@@ -67,6 +68,13 @@ const ensureAuth = (req, res, next) => {
 
 const isMongoConnected = () => mongoose.connection.readyState === 1;
 let mongoConnectPromise = null;
+
+const normalizeDate = (value, fallbackValue = new Date()) => {
+  const fallbackDate = fallbackValue instanceof Date ? fallbackValue : new Date(fallbackValue);
+  const safeFallback = Number.isNaN(fallbackDate.getTime()) ? new Date() : fallbackDate;
+  const parsedDate = value instanceof Date ? value : new Date(value);
+  return value && !Number.isNaN(parsedDate.getTime()) ? parsedDate : safeFallback;
+};
 
 const buildAuthResponse = ({ id, username, displayName, role = "admin" }) => {
   const token = jwt.sign({ sub: String(id), username, role }, JWT_SECRET, { expiresIn: "8h" });
@@ -158,6 +166,7 @@ const sanitizeSiteContentPayload = (payload = {}) => {
       ? payload.governors
           .map((item) => ({
             name: String(item?.name || "").trim(),
+            year: String(item?.year || "").trim(),
             role: String(item?.role || "").trim(),
             quote: String(item?.quote || "").trim(),
             funFact: String(item?.funFact || "").trim(),
@@ -173,25 +182,72 @@ const sanitizeSiteContentPayload = (payload = {}) => {
   return safe;
 };
 
-const buildFallbackSiteContent = () => ({
+const buildStoredSiteContent = (payload = {}) => ({
   key: "main",
-  ...sanitizeSiteContentPayload(DEFAULT_SITE_CONTENT),
-  updatedBy: "fallback",
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  ...sanitizeSiteContentPayload(payload),
+  updatedBy: String(payload?.updatedBy || "fallback").trim() || "fallback",
+  createdAt: normalizeDate(payload?.createdAt),
+  updatedAt: normalizeDate(payload?.updatedAt),
 });
 
-let fallbackSiteContent = buildFallbackSiteContent();
+const persistFallbackSiteContent = (content) => {
+  try {
+    const serializableContent = {
+      key: "main",
+      ...sanitizeSiteContentPayload(content),
+      updatedBy: String(content?.updatedBy || "fallback").trim() || "fallback",
+      createdAt: normalizeDate(content?.createdAt).toISOString(),
+      updatedAt: normalizeDate(content?.updatedAt).toISOString(),
+    };
+
+    fs.writeFileSync(fallbackContentFile, JSON.stringify(serializableContent, null, 2), "utf8");
+    return true;
+  } catch (error) {
+    console.warn("Failed to persist fallback site content:", error.message);
+    return false;
+  }
+};
+
+const buildFallbackSiteContent = () =>
+  buildStoredSiteContent({
+    ...DEFAULT_SITE_CONTENT,
+    updatedBy: "fallback",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+const loadFallbackSiteContent = () => {
+  if (!fs.existsSync(fallbackContentFile)) {
+    return buildFallbackSiteContent();
+  }
+
+  try {
+    const rawContent = JSON.parse(fs.readFileSync(fallbackContentFile, "utf8"));
+    return buildStoredSiteContent(rawContent);
+  } catch (error) {
+    console.warn("Failed to load fallback site content, using defaults:", error.message);
+    return buildFallbackSiteContent();
+  }
+};
+
+let fallbackSiteContent = loadFallbackSiteContent();
 
 const getFallbackSiteContent = () => fallbackSiteContent;
 
+const syncFallbackSiteContent = (content) => {
+  fallbackSiteContent = buildStoredSiteContent(content);
+  persistFallbackSiteContent(fallbackSiteContent);
+  return fallbackSiteContent;
+};
+
 const updateFallbackSiteContent = (safePayload, updatedBy) => {
-  fallbackSiteContent = {
+  fallbackSiteContent = buildStoredSiteContent({
     ...fallbackSiteContent,
     ...safePayload,
     updatedBy: String(updatedBy || "admin"),
     updatedAt: new Date(),
-  };
+  });
+  persistFallbackSiteContent(fallbackSiteContent);
   return fallbackSiteContent;
 };
 
@@ -366,6 +422,7 @@ app.put("/api/content/admin", ensureAuth, async (req, res) => {
     content.latestEvent = safePayload.latestEvent;
     content.updatedBy = String(req.admin?.username || "admin");
     await content.save();
+    syncFallbackSiteContent(content);
     return res.json({ message: "Content updated successfully.", content });
   } catch (error) {
     console.error("Admin content update failed:", error.message);
@@ -425,7 +482,8 @@ const connectToMongo = async () => {
     .then(async () => {
       console.log("MongoDB Connected");
       await ensureBootstrapAdmin();
-      await getOrCreateSiteContent();
+      const content = await getOrCreateSiteContent();
+      syncFallbackSiteContent(content);
       return true;
     })
     .catch((err) => {
