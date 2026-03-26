@@ -33,8 +33,10 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       const allow =
-        /^http:\/\/localhost:\d+$/.test(origin) ||
-        /^http:\/\/127\.0\.0\.1:\d+$/.test(origin);
+  /^http:\/\/localhost:\d+$/.test(origin) ||
+  /^http:\/\/127\.0\.0\.1:\d+$/.test(origin) ||
+  /^https:\/\/.*\.vercel\.app$/.test(origin) ||
+  /^https:\/\/prasthanam.*\.vercel\.app$/.test(origin);
       if (allow) return callback(null, true);
       return callback(new Error("Not allowed by CORS"));
     },
