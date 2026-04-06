@@ -22,6 +22,8 @@ const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-env";
 const uploadsDir = path.join(__dirname, "uploads");
 const fallbackContentFile = path.join(__dirname, "siteContent.fallback.json");
+const CANONICAL_BACKEND_ORIGIN = "https://prasthanam-backend.onrender.com";
+const LEGACY_BACKEND_ORIGINS = ["http://localhost:5000", "http://prasthanam-backend.onrender.com"];
 const ENV_ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || "").trim().toLowerCase();
 const ENV_ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "");
 const ENV_ADMIN_DISPLAY_NAME = String(process.env.ADMIN_DISPLAY_NAME || "Backstage Admin");
@@ -108,9 +110,70 @@ const upload = multer({
 const normalizeTextArray = (value) =>
   Array.isArray(value) ? value.map((v) => String(v || "").trim()).filter(Boolean) : [];
 
+const normalizeImageUrl = (value) => {
+  const safeValue = String(value || "").trim();
+  if (!safeValue) return "";
+
+  for (const legacyOrigin of LEGACY_BACKEND_ORIGINS) {
+    if (safeValue === legacyOrigin) {
+      return CANONICAL_BACKEND_ORIGIN;
+    }
+    if (safeValue.startsWith(`${legacyOrigin}/`)) {
+      return `${CANONICAL_BACKEND_ORIGIN}${safeValue.slice(legacyOrigin.length)}`;
+    }
+  }
+
+  return safeValue;
+};
+
+const normalizeImageUrlArray = (value) =>
+  Array.isArray(value) ? value.map((item) => normalizeImageUrl(item)) : [];
+
+const sanitizeImageUrlArray = (value) => normalizeImageUrlArray(value).filter(Boolean);
+
+const getSiteContentImageUrlSnapshot = (payload = {}) =>
+  JSON.stringify({
+    gallery: Array.isArray(payload?.gallery?.images)
+      ? payload.gallery.images.map((item) => String(item || "").trim())
+      : [],
+    castBatches: Array.isArray(payload?.castBatches)
+      ? payload.castBatches.map((item) =>
+          Array.isArray(item?.photos) ? item.photos.map((photo) => String(photo || "").trim()) : []
+        )
+      : [],
+    governors: Array.isArray(payload?.governors)
+      ? payload.governors.map((item) => String(item?.img || "").trim())
+      : [],
+    latestEvent: String(payload?.latestEvent?.poster || "").trim(),
+  });
+
+const normalizeSiteContentImageUrls = (payload = {}) => ({
+  ...payload,
+  gallery: {
+    ...(payload?.gallery || {}),
+    images: normalizeImageUrlArray(payload?.gallery?.images),
+  },
+  castBatches: Array.isArray(payload?.castBatches)
+    ? payload.castBatches.map((item = {}) => ({
+        ...item,
+        photos: normalizeImageUrlArray(item?.photos),
+      }))
+    : [],
+  governors: Array.isArray(payload?.governors)
+    ? payload.governors.map((item = {}) => ({
+        ...item,
+        img: normalizeImageUrl(item?.img),
+      }))
+    : [],
+  latestEvent: {
+    ...(payload?.latestEvent || {}),
+    poster: normalizeImageUrl(payload?.latestEvent?.poster),
+  },
+});
+
 const sanitizeLatestEvent = (value = {}) => ({
   title: String(value?.title || "").trim(),
-  poster: String(value?.poster || "").trim(),
+  poster: normalizeImageUrl(value?.poster),
   date: String(value?.date || "").trim(),
   time: String(value?.time || "").trim(),
   venue: String(value?.venue || "").trim(),
@@ -129,12 +192,13 @@ const sanitizeTicketBookingPayload = (value = {}) => ({
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 
 const sanitizeSiteContentPayload = (payload = {}) => {
+  const normalizedPayload = normalizeSiteContentImageUrls(payload);
   const safe = {
     gallery: {
-      images: normalizeTextArray(payload.gallery?.images),
+      images: sanitizeImageUrlArray(normalizedPayload.gallery?.images),
     },
-    timeline: Array.isArray(payload.timeline)
-      ? payload.timeline
+    timeline: Array.isArray(normalizedPayload.timeline)
+      ? normalizedPayload.timeline
           .map((item) => ({
             year: String(item?.year || "").trim(),
             title: String(item?.title || "").trim(),
@@ -142,8 +206,8 @@ const sanitizeSiteContentPayload = (payload = {}) => {
           }))
           .filter((item) => item.year || item.title || item.desc)
       : [],
-    navarasas: Array.isArray(payload.navarasas)
-      ? payload.navarasas
+    navarasas: Array.isArray(normalizedPayload.navarasas)
+      ? normalizedPayload.navarasas
           .map((item) => ({
             id: String(item?.id || "").trim(),
             name: String(item?.name || "").trim(),
@@ -152,19 +216,19 @@ const sanitizeSiteContentPayload = (payload = {}) => {
           }))
           .filter((item) => item.id)
       : [],
-    castBatches: Array.isArray(payload.castBatches)
-      ? payload.castBatches
+    castBatches: Array.isArray(normalizedPayload.castBatches)
+      ? normalizedPayload.castBatches
           .map((item) => ({
             id: String(item?.id || "").trim(),
             label: String(item?.label || "").trim(),
             yearRange: String(item?.yearRange || "").trim(),
             members: normalizeTextArray(item?.members),
-            photos: normalizeTextArray(item?.photos),
+            photos: sanitizeImageUrlArray(item?.photos),
           }))
           .filter((item) => item.id && item.label && item.yearRange)
       : [],
-    governors: Array.isArray(payload.governors)
-      ? payload.governors
+    governors: Array.isArray(normalizedPayload.governors)
+      ? normalizedPayload.governors
           .map((item) => ({
             name: String(item?.name || "").trim(),
             year: String(item?.year || "").trim(),
@@ -174,11 +238,11 @@ const sanitizeSiteContentPayload = (payload = {}) => {
             department: String(item?.department || "").trim(),
             contactInfo: String(item?.contactInfo || "").trim(),
             zodiacSign: String(item?.zodiacSign || "").trim(),
-            img: String(item?.img || "").trim(),
+            img: normalizeImageUrl(item?.img),
           }))
           .filter((item) => item.name)
       : [],
-    latestEvent: sanitizeLatestEvent(payload.latestEvent),
+    latestEvent: sanitizeLatestEvent(normalizedPayload.latestEvent),
   };
   return safe;
 };
@@ -224,7 +288,14 @@ const loadFallbackSiteContent = () => {
 
   try {
     const rawContent = JSON.parse(fs.readFileSync(fallbackContentFile, "utf8"));
-    return buildStoredSiteContent(rawContent);
+    const content = buildStoredSiteContent(rawContent);
+    const normalizedRawContent = normalizeSiteContentImageUrls(rawContent);
+
+    if (getSiteContentImageUrlSnapshot(rawContent) !== getSiteContentImageUrlSnapshot(normalizedRawContent)) {
+      persistFallbackSiteContent(content);
+    }
+
+    return content;
   } catch (error) {
     console.warn("Failed to load fallback site content, using defaults:", error.message);
     return buildFallbackSiteContent();
@@ -252,15 +323,40 @@ const updateFallbackSiteContent = (safePayload, updatedBy) => {
   return fallbackSiteContent;
 };
 
-const toPublicContentResponse = (content) => ({
-  gallery: content?.gallery || { images: [] },
-  timeline: content?.timeline || [],
-  navarasas: content?.navarasas || [],
-  castBatches: content?.castBatches || [],
-  governors: content?.governors || [],
-  latestEvent: content?.latestEvent || sanitizeLatestEvent(),
-  updatedAt: content?.updatedAt || new Date(),
-});
+const toPublicContentResponse = (content) => {
+  const normalizedContent = normalizeSiteContentImageUrls(content);
+  return {
+    gallery: normalizedContent?.gallery || { images: [] },
+    timeline: content?.timeline || [],
+    navarasas: content?.navarasas || [],
+    castBatches: normalizedContent?.castBatches || [],
+    governors: normalizedContent?.governors || [],
+    latestEvent: normalizedContent?.latestEvent || sanitizeLatestEvent(),
+    updatedAt: content?.updatedAt || new Date(),
+  };
+};
+
+const syncStoredSiteContentImageUrls = async (content) => {
+  if (!content) return content;
+
+  const plainContent = typeof content.toObject === "function" ? content.toObject() : content;
+  const normalizedContent = normalizeSiteContentImageUrls(plainContent);
+
+  if (getSiteContentImageUrlSnapshot(plainContent) === getSiteContentImageUrlSnapshot(normalizedContent)) {
+    return content;
+  }
+
+  content.gallery = normalizedContent.gallery;
+  content.castBatches = normalizedContent.castBatches;
+  content.governors = normalizedContent.governors;
+  content.latestEvent = normalizedContent.latestEvent;
+
+  if (typeof content.save === "function") {
+    await content.save();
+  }
+
+  return content;
+};
 
 const getOrCreateSiteContent = async () => {
   if (!isMongoConnected()) {
@@ -275,7 +371,7 @@ const getOrCreateSiteContent = async () => {
       updatedBy: "bootstrap",
     });
   }
-  return content;
+  return syncStoredSiteContentImageUrls(content);
 };
 
 app.post("/api/admin/login", async (req, res) => {
@@ -394,13 +490,13 @@ app.get("/api/content/public", async (_req, res) => {
 app.get("/api/content/admin", ensureAuth, async (_req, res) => {
   try {
     if (!isMongoConnected()) {
-      return res.json(getFallbackSiteContent());
+      return res.json(normalizeSiteContentImageUrls(getFallbackSiteContent()));
     }
     const content = await getOrCreateSiteContent();
-    return res.json(content);
+    return res.json(normalizeSiteContentImageUrls(typeof content.toObject === "function" ? content.toObject() : content));
   } catch (error) {
     console.error("Admin content fetch failed, serving fallback content:", error.message);
-    return res.json(getFallbackSiteContent());
+    return res.json(normalizeSiteContentImageUrls(getFallbackSiteContent()));
   }
 });
 
