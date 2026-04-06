@@ -344,16 +344,23 @@ const updateFallbackSiteContent = (safePayload, updatedBy) => {
   return fallbackSiteContent;
 };
 
-const toPublicContentResponse = (content) => {
-  const normalizedContent = normalizeSiteContentImageUrls(content);
+const toPublicContentResponse = (data) => {
+  const normalizedContent = normalizeSiteContentImageUrls(data);
+  const latestEvent = data?.latestEvent
+    ? sanitizeLatestEvent({
+        ...data.latestEvent,
+        poster: normalizeImageUrl(data.latestEvent?.poster),
+      })
+    : sanitizeLatestEvent();
+
   return {
     gallery: normalizedContent?.gallery || { images: [] },
-    timeline: content?.timeline || [],
-    navarasas: content?.navarasas || [],
+    timeline: data?.timeline || [],
+    navarasas: data?.navarasas || [],
     castBatches: normalizedContent?.castBatches || [],
     governors: normalizedContent?.governors || [],
-    latestEvent: normalizedContent?.latestEvent || sanitizeLatestEvent(),
-    updatedAt: content?.updatedAt || new Date(),
+    latestEvent,
+    updatedAt: data?.updatedAt || new Date(),
   };
 };
 
