@@ -369,6 +369,12 @@ const syncStoredSiteContentImageUrls = async (content) => {
 
   const plainContent = typeof content.toObject === "function" ? content.toObject() : content;
   const normalizedContent = normalizeSiteContentImageUrls(plainContent);
+  const latestEventFromData = plainContent?.latestEvent
+    ? {
+        ...plainContent.latestEvent,
+        poster: normalizeImageUrl(plainContent.latestEvent?.poster),
+      }
+    : plainContent?.latestEvent;
 
   if (getSiteContentImageUrlSnapshot(plainContent) === getSiteContentImageUrlSnapshot(normalizedContent)) {
     return content;
@@ -377,7 +383,7 @@ const syncStoredSiteContentImageUrls = async (content) => {
   content.gallery = normalizedContent.gallery;
   content.castBatches = normalizedContent.castBatches;
   content.governors = normalizedContent.governors;
-  content.latestEvent = normalizedContent.latestEvent;
+  content.latestEvent = latestEventFromData;
 
   if (typeof content.save === "function") {
     await content.save();
