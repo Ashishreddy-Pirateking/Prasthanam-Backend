@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
+const { v2: cloudinary } = require("cloudinary");
 const Admin = require("./models/Admin");
 const SiteContent = require("./models/SiteContent");
 const { DEFAULT_SITE_CONTENT } = require("./defaultContent");
@@ -20,17 +21,22 @@ const app = express();
 app.set("trust proxy", true);
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-env";
-const uploadsDir = path.join(__dirname, "uploads");
 const fallbackContentFile = path.join(__dirname, "siteContent.fallback.json");
 const CANONICAL_BACKEND_ORIGIN = "https://prasthanam-backend.onrender.com";
 const LEGACY_BACKEND_ORIGINS = ["http://localhost:5000", "http://prasthanam-backend.onrender.com"];
 const ENV_ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || "").trim().toLowerCase();
 const ENV_ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "");
 const ENV_ADMIN_DISPLAY_NAME = String(process.env.ADMIN_DISPLAY_NAME || "Backstage Admin");
+const CLOUDINARY_CLOUD_NAME = String(process.env.CLOUDINARY_CLOUD_NAME || "").trim();
+const CLOUDINARY_API_KEY = String(process.env.CLOUDINARY_API_KEY || "").trim();
+const CLOUDINARY_API_SECRET = String(process.env.CLOUDINARY_API_SECRET || "").trim();
 
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+cloudinary.config({
+  cloud_name: CLOUDINARY_CLOUD_NAME,
+  api_key: CLOUDINARY_API_KEY,
+  api_secret: CLOUDINARY_API_SECRET,
+  secure: true,
+});
 
 app.use(
   cors({
@@ -48,7 +54,6 @@ app.use(
   })
 );
 app.use(express.json());
-app.use("/uploads", express.static(uploadsDir));
 
 app.get("/", (req, res) => {
   res.send("Backend is running");
@@ -71,6 +76,8 @@ const ensureAuth = (req, res, next) => {
 
 const isMongoConnected = () => mongoose.connection.readyState === 1;
 let mongoConnectPromise = null;
+const isCloudinaryConfigured = () =>
+  Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
 
 const normalizeDate = (value, fallbackValue = new Date()) => {
   const fallbackDate = fallbackValue instanceof Date ? fallbackValue : new Date(fallbackValue);
@@ -93,19 +100,33 @@ const buildAuthResponse = ({ id, username, displayName, role = "admin" }) => {
 };
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, uploadsDir),
-    filename: (_req, file, cb) => {
-      const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-      cb(null, `${Date.now()}-${safeName}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) return cb(null, true);
     return cb(new Error("Only image uploads are allowed."));
   },
   limits: { fileSize: 10 * 1024 * 1024 },
 });
+
+const uploadImageToCloudinary = (file) =>
+  new Promise((resolve, reject) => {
+    const baseName = path.parse(String(file?.originalname || "upload")).name;
+    const safeName = baseName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "upload";
+
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "prasthanam/uploads",
+        resource_type: "image",
+        public_id: `${Date.now()}-${safeName}`,
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        return resolve(result);
+      }
+    );
+
+    stream.end(file.buffer);
+  });
 
 const normalizeTextArray = (value) =>
   Array.isArray(value) ? value.map((v) => String(v || "").trim()).filter(Boolean) : [];
@@ -531,11 +552,18 @@ app.post("/api/content/admin/upload", ensureAuth, upload.single("file"), async (
   if (!req.file) {
     return res.status(400).json({ message: "No file uploaded." });
   }
-  const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+
+  if (!isCloudinaryConfigured()) {
+    return res.status(500).json({ message: "Cloudinary is not configured." });
+  }
+
+  const uploadedImage = await uploadImageToCloudinary(req.file);
+  const fileUrl = String(uploadedImage.secure_url || uploadedImage.url || "").trim();
+
   return res.json({
     message: "Upload successful.",
     fileUrl,
-    fileName: req.file.filename,
+    fileName: uploadedImage.public_id,
   });
 });
 
