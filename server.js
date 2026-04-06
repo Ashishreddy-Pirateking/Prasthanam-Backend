@@ -612,6 +612,8 @@ if (typeof reconnectTimer.unref === "function") {
   reconnectTimer.unref();
 }
 
+// fix uploads static serving
+
 app.use((err, _req, res, _next) => {
   if (err instanceof multer.MulterError) {
     return res.status(400).json({ message: err.message });
