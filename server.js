@@ -333,25 +333,27 @@ const syncFallbackSiteContent = (content) => {
   return fallbackSiteContent;
 };
 
-const updateFallbackSiteContent = (safePayload, updatedBy) => {
-  fallbackSiteContent = buildStoredSiteContent({
+const updateFallbackSiteContent = (safePayload, updatedBy, { hasLatestEvent = true } = {}) => {
+  const nextContent = {
     ...fallbackSiteContent,
     ...safePayload,
     updatedBy: String(updatedBy || "admin"),
     updatedAt: new Date(),
-  });
+  };
+
+  if (!hasLatestEvent) {
+    nextContent.latestEvent = fallbackSiteContent.latestEvent;
+  }
+
+  fallbackSiteContent = buildStoredSiteContent(nextContent);
   persistFallbackSiteContent(fallbackSiteContent);
   return fallbackSiteContent;
 };
 
 const toPublicContentResponse = (data) => {
   const normalizedContent = normalizeSiteContentImageUrls(data);
-  const latestEvent = data?.latestEvent
-    ? sanitizeLatestEvent({
-        ...data.latestEvent,
-        poster: normalizeImageUrl(data.latestEvent?.poster),
-      })
-    : sanitizeLatestEvent();
+  delete normalizedContent.latestEvent;
+  const latestEvent = data?.latestEvent || sanitizeLatestEvent();
 
   return {
     gallery: normalizedContent?.gallery || { images: [] },
@@ -514,7 +516,9 @@ app.get("/api/content/public", async (_req, res) => {
       return res.json(toPublicContentResponse(getFallbackSiteContent()));
     }
     const content = await getOrCreateSiteContent();
-    return res.json(toPublicContentResponse(content));
+    const data = typeof content.toObject === "function" ? content.toObject() : content;
+    console.log("DB latestEvent:", data.latestEvent);
+    return res.json(toPublicContentResponse(data));
   } catch (error) {
     console.error("Public content fetch failed, serving fallback content:", error.message);
     return res.json(toPublicContentResponse(getFallbackSiteContent()));
@@ -536,9 +540,10 @@ app.get("/api/content/admin", ensureAuth, async (_req, res) => {
 
 app.put("/api/content/admin", ensureAuth, async (req, res) => {
   try {
+    const hasLatestEvent = Object.prototype.hasOwnProperty.call(req.body || {}, "latestEvent");
     const safePayload = sanitizeSiteContentPayload(req.body || {});
     if (!isMongoConnected()) {
-      const content = updateFallbackSiteContent(safePayload, req.admin?.username);
+      const content = updateFallbackSiteContent(safePayload, req.admin?.username, { hasLatestEvent });
       return res.json({
         message: "Content updated successfully (fallback mode).",
         content,
@@ -550,7 +555,9 @@ app.put("/api/content/admin", ensureAuth, async (req, res) => {
     content.navarasas = safePayload.navarasas;
     content.castBatches = safePayload.castBatches;
     content.governors = safePayload.governors;
-    content.latestEvent = safePayload.latestEvent;
+    if (hasLatestEvent) {
+      content.latestEvent = safePayload.latestEvent;
+    }
     content.updatedBy = String(req.admin?.username || "admin");
     await content.save();
     syncFallbackSiteContent(content);
