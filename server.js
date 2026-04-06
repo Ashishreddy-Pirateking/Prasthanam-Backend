@@ -17,6 +17,7 @@ const {
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const app = express();
+app.set("trust proxy", true);
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-env";
 const uploadsDir = path.join(__dirname, "uploads");
