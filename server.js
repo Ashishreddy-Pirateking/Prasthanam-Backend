@@ -216,7 +216,7 @@ const sanitizeSiteContentPayload = (payload = {}) => {
   const normalizedPayload = normalizeSiteContentImageUrls(payload);
   const safe = {
     gallery: {
-      images: sanitizeImageUrlArray(normalizedPayload.gallery?.images),
+      images: Array.isArray(payload.gallery?.images) ? payload.gallery.images : [],
     },
     timeline: Array.isArray(normalizedPayload.timeline)
       ? normalizedPayload.timeline
@@ -237,16 +237,19 @@ const sanitizeSiteContentPayload = (payload = {}) => {
           }))
           .filter((item) => item.id)
       : [],
-    castBatches: Array.isArray(normalizedPayload.castBatches)
-      ? normalizedPayload.castBatches
-          .map((item) => ({
-            id: String(item?.id || "").trim(),
-            label: String(item?.label || "").trim(),
-            yearRange: String(item?.yearRange || "").trim(),
-            members: normalizeTextArray(item?.members),
-            photos: sanitizeImageUrlArray(item?.photos),
-          }))
-          .filter((item) => item.id && item.label && item.yearRange)
+    castBatches: Array.isArray(payload.castBatches)
+      ? payload.castBatches.map((batch) => {
+          const safeBatch =
+            batch && typeof batch.toObject === "function"
+              ? batch.toObject()
+              : batch && typeof batch === "object"
+                ? batch
+                : {};
+          return {
+            ...safeBatch,
+            photos: Array.isArray(safeBatch.photos) ? safeBatch.photos : [],
+          };
+        })
       : [],
     governors: Array.isArray(normalizedPayload.governors)
       ? normalizedPayload.governors
@@ -337,6 +340,8 @@ const updateFallbackSiteContent = (safePayload, updatedBy, { hasLatestEvent = tr
   const nextContent = {
     ...fallbackSiteContent,
     ...safePayload,
+    gallery: safePayload.gallery ?? fallbackSiteContent.gallery,
+    castBatches: safePayload.castBatches ?? fallbackSiteContent.castBatches,
     updatedBy: String(updatedBy || "admin"),
     updatedAt: new Date(),
   };
@@ -356,10 +361,10 @@ const toPublicContentResponse = (data) => {
   const latestEvent = data?.latestEvent || sanitizeLatestEvent();
 
   return {
-    gallery: normalizedContent?.gallery || { images: [] },
+    gallery: data?.gallery || { images: [] },
     timeline: data?.timeline || [],
     navarasas: data?.navarasas || [],
-    castBatches: normalizedContent?.castBatches || [],
+    castBatches: data?.castBatches || [],
     governors: normalizedContent?.governors || [],
     latestEvent,
     updatedAt: data?.updatedAt || new Date(),
@@ -513,15 +518,20 @@ app.post("/api/tickets/book", async (req, res) => {
 app.get("/api/content/public", async (_req, res) => {
   try {
     if (!isMongoConnected()) {
-      return res.json(toPublicContentResponse(getFallbackSiteContent()));
+      const data = getFallbackSiteContent();
+      console.log("Returning gallery:", data.gallery);
+      return res.json(toPublicContentResponse(data));
     }
     const content = await getOrCreateSiteContent();
     const data = typeof content.toObject === "function" ? content.toObject() : content;
     console.log("DB latestEvent:", data.latestEvent);
+    console.log("Returning gallery:", data.gallery);
     return res.json(toPublicContentResponse(data));
   } catch (error) {
     console.error("Public content fetch failed, serving fallback content:", error.message);
-    return res.json(toPublicContentResponse(getFallbackSiteContent()));
+    const data = getFallbackSiteContent();
+    console.log("Returning gallery:", data.gallery);
+    return res.json(toPublicContentResponse(data));
   }
 });
 
@@ -541,25 +551,42 @@ app.get("/api/content/admin", ensureAuth, async (_req, res) => {
 app.put("/api/content/admin", ensureAuth, async (req, res) => {
   try {
     const hasLatestEvent = Object.prototype.hasOwnProperty.call(req.body || {}, "latestEvent");
+    const hasGallery = Object.prototype.hasOwnProperty.call(req.body || {}, "gallery");
+    const hasCastBatches = Object.prototype.hasOwnProperty.call(req.body || {}, "castBatches");
     const safePayload = sanitizeSiteContentPayload(req.body || {});
+    if (!hasGallery) {
+      delete safePayload.gallery;
+    }
+    if (!hasCastBatches) {
+      delete safePayload.castBatches;
+    }
+    console.log("Incoming payload:", safePayload);
     if (!isMongoConnected()) {
       const content = updateFallbackSiteContent(safePayload, req.admin?.username, { hasLatestEvent });
+      console.log("Saved gallery:", content.gallery);
+      console.log("Saved castBatches:", content.castBatches);
       return res.json({
         message: "Content updated successfully (fallback mode).",
         content,
       });
     }
     const content = await getOrCreateSiteContent();
-    content.gallery = safePayload.gallery;
+    if (safePayload.gallery) {
+      content.gallery = safePayload.gallery;
+    }
     content.timeline = safePayload.timeline;
     content.navarasas = safePayload.navarasas;
-    content.castBatches = safePayload.castBatches;
+    if (safePayload.castBatches) {
+      content.castBatches = safePayload.castBatches;
+    }
     content.governors = safePayload.governors;
     if (hasLatestEvent) {
       content.latestEvent = safePayload.latestEvent;
     }
     content.updatedBy = String(req.admin?.username || "admin");
     await content.save();
+    console.log("Saved gallery:", content.gallery);
+    console.log("Saved castBatches:", content.castBatches);
     syncFallbackSiteContent(content);
     return res.json({ message: "Content updated successfully.", content });
   } catch (error) {
