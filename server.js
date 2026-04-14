@@ -46,7 +46,9 @@ app.use(
   /^http:\/\/localhost:\d+$/.test(origin) ||
   /^http:\/\/127\.0\.0\.1:\d+$/.test(origin) ||
   /^https:\/\/.*\.vercel\.app$/.test(origin) ||
-  /^https:\/\/prasthanam.*\.vercel\.app$/.test(origin);
+  /^https:\/\/prasthanam.*\.vercel\.app$/.test(origin) ||
+  origin === "https://www.prasthanamiitkgp.com" ||
+  origin === "https://prasthanamiitkgp.com";
       if (allow) return callback(null, true);
       return callback(new Error("Not allowed by CORS"));
     },
@@ -553,12 +555,50 @@ app.put("/api/content/admin", ensureAuth, async (req, res) => {
     const hasLatestEvent = Object.prototype.hasOwnProperty.call(req.body || {}, "latestEvent");
     const hasGallery = Object.prototype.hasOwnProperty.call(req.body || {}, "gallery");
     const hasCastBatches = Object.prototype.hasOwnProperty.call(req.body || {}, "castBatches");
+    const mergeCastBatchesById = (existingBatches = [], incomingBatches = []) => {
+      const existingList = Array.isArray(existingBatches) ? existingBatches : [];
+      const incomingList = Array.isArray(incomingBatches) ? incomingBatches : [];
+      const incomingById = new Map(
+        incomingList.map((batch) => [String(batch?.id || ""), batch]).filter(([id]) => id)
+      );
+      const merged = existingList.map((batch) => {
+        const plainBatch = batch && typeof batch.toObject === "function" ? batch.toObject() : batch;
+        const batchId = String(plainBatch?.id || "");
+        if (!incomingById.has(batchId)) {
+          return plainBatch;
+        }
+        return {
+          ...plainBatch,
+          ...incomingById.get(batchId),
+        };
+      });
+      const existingIds = new Set(
+        existingList
+          .map((batch) => {
+            const plainBatch = batch && typeof batch.toObject === "function" ? batch.toObject() : batch;
+            return String(plainBatch?.id || "");
+          })
+          .filter(Boolean)
+      );
+
+      incomingList.forEach((batch) => {
+        const batchId = String(batch?.id || "");
+        if (!batchId || existingIds.has(batchId)) {
+          return;
+        }
+        merged.push(batch);
+      });
+
+      return merged;
+    };
     const safePayload = sanitizeSiteContentPayload(req.body || {});
     if (!hasGallery) {
       delete safePayload.gallery;
     }
     if (!hasCastBatches) {
       delete safePayload.castBatches;
+    } else {
+      safePayload.castBatches = mergeCastBatchesById(getFallbackSiteContent().castBatches, safePayload.castBatches);
     }
     console.log("Incoming payload:", safePayload);
     if (!isMongoConnected()) {
@@ -577,7 +617,7 @@ app.put("/api/content/admin", ensureAuth, async (req, res) => {
     content.timeline = safePayload.timeline;
     content.navarasas = safePayload.navarasas;
     if (safePayload.castBatches) {
-      content.castBatches = safePayload.castBatches;
+      content.castBatches = mergeCastBatchesById(content.castBatches, safePayload.castBatches);
     }
     content.governors = safePayload.governors;
     if (hasLatestEvent) {
